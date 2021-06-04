@@ -34,6 +34,10 @@ exports.sourceNodes = async function({ actions }, options) {
           if (['number', 'boolean', 'string', 'object'].indexOf(objectType) === -1) {
             continue;
           }
+          
+          if (objectType === 'object') {
+            item.content[prop] = JSON.stringify(item.content[prop]);
+          }
 
           const type = prop == 'component' ? '' : ('_' + objectType)
 

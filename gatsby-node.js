@@ -3,9 +3,21 @@ const Sync = require('./src/sync')
 const getStoryParams = require('./src/getStoryParams')
 const stringify = require('json-stringify-safe')
 
+const log = (msg) => console.log(`[Storyblok] ${msg}`)
+
+const logMemory = (label) => {
+  const { heapUsed, heapTotal, rss } = process.memoryUsage()
+  const mb = (b) => Math.round(b / 1024 / 1024)
+  log(`memory [${label}] | heapUsed: ${mb(heapUsed)}MB | heapTotal: ${mb(heapTotal)}MB | rss: ${mb(rss)}MB`)
+}
+
 exports.sourceNodes = async function({ actions }, options) {
   const { createNode, setPluginStatus } = actions
   const client = new StoryblokClient(options)
+  const tokenPreview = options.accessToken ? options.accessToken.slice(0, 8) + '...' : 'none'
+
+  log(`sourceNodes starting | version: "${options.version || 'published'}" | token: ${tokenPreview}`)
+  logMemory('sourceNodes start')
 
   Sync.init({
     createNode,
@@ -17,7 +29,10 @@ exports.sourceNodes = async function({ actions }, options) {
   const languages = options.languages ? options.languages : space.language_codes
   languages.push('')
 
+  log(`Languages to fetch: ${JSON.stringify(languages)}`)
+
   for (const language of languages) {
+    log(`--- Starting language: "${language || 'default'}" ---`)
     await Sync.getAll('stories', {
       node: 'StoryblokEntry',
       params: getStoryParams(language, options),
@@ -39,11 +54,19 @@ exports.sourceNodes = async function({ actions }, options) {
 
           item['field_' + prop + type] = item.content[prop]
         }
-        item.content = stringify(item.content)
+
+        const contentStr = stringify(item.content)
+        const contentSizeKb = Math.round(Buffer.byteLength(contentStr, 'utf8') / 1024)
+        if (contentSizeKb > 100) {
+          log(`⚠ Large story content: "${item.slug}" | ${contentSizeKb}kb | component: ${item.content && item.content.component}`)
+        }
+
+        item.content = contentStr
       }
     })
   }
 
+  log(`Fetching tags...`)
   await Sync.getAll('tags', {
     node: 'StoryblokTag',
     params: getStoryParams('', options),
@@ -53,19 +76,24 @@ exports.sourceNodes = async function({ actions }, options) {
   })
 
   if (options.includeLinks === true) {
+    log(`Fetching links...`)
     await Sync.getAll('links', {
       node: 'StoryblokLink',
       params: getStoryParams('', options)
     })
   }
 
+  log(`Fetching datasources...`)
   const datasources = await Sync.getAll('datasources', {
     node: 'StoryblokDatasource'
   })
 
+  log(`Found ${datasources.length} datasource(s)`)
+
   for (const datasource of datasources) {
     const datasourceSlug = datasource.slug
 
+    log(`Fetching entries for datasource: "${datasourceSlug}"`)
     await Sync.getAll('datasource_entries', {
       node: 'StoryblokDatasourceEntry',
       params: {
@@ -80,6 +108,7 @@ exports.sourceNodes = async function({ actions }, options) {
     const datasourceDimensions = datasource.dimensions || []
 
     for (const dimension of datasourceDimensions) {
+      log(`Fetching entries for datasource: "${datasourceSlug}" | dimension: "${dimension.entry_value}"`)
       await Sync.getAll('datasource_entries', {
         node: 'StoryblokDatasourceEntry',
         params: {
@@ -93,4 +122,7 @@ exports.sourceNodes = async function({ actions }, options) {
       })
     }
   }
+
+  logMemory('sourceNodes end')
+  log(`sourceNodes complete`)
 }

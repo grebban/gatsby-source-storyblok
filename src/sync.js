@@ -1,6 +1,8 @@
 const crypto = require('crypto')
 const stringify = require('json-stringify-safe')
 
+const log = (msg) => console.log(`[Storyblok] ${msg}`)
+
 module.exports = {
   init({createNode, client, setPluginStatus}) {
     setPluginStatus({lastFetched: Date.now()})
@@ -10,10 +12,13 @@ module.exports = {
   },
 
   async getSpace() {
+    log(`→ Fetching "space" (spaces/me)`)
+    const t0 = Date.now()
     const space = await this.getOne('space', 'spaces/me', {
       node: 'StoryblokSpace'
     })
     this.$cacheVersion = space.version
+    log(`✓ "space" done in ${Date.now() - t0}ms | id: ${space.id} | cacheVersion: ${space.version}`)
     return space
   },
 
@@ -78,26 +83,43 @@ module.exports = {
   },
 
   async getAll(type, options) {
+    log(`Starting getAll for "${type}"`)
+    const totalStart = Date.now()
+
     let page = 1
+    let t0 = Date.now()
+    log(`→ Fetching "${type}" page ${page} | params: ${JSON.stringify(options.params || {})}`)
     let res = await this.getPage(type, page, options)
+    log(`✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
+
     let all = res.data[type].constructor === Object ? Object.values(res.data[type]) : res.data[type]
     let total = res.total
     let lastPage = Math.ceil((res.total / 25))
 
+    if (lastPage > 1) {
+      log(`"${type}" total: ${total} items across ${lastPage} page(s)`)
+    }
+
     while (page < lastPage){
       page++
+      t0 = Date.now()
+      log(`→ Fetching "${type}" page ${page}`)
       res = await this.getPage(type, page, options)
+      log(`✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
       res.data[type].forEach((item) => {
         all.push(item)
       })
     }
 
+    log(`Processing ${all.length} "${type}" nodes...`)
     all.forEach((item) => {
       if (options.process) {
         options.process(item)
       }
       this.createNode(options.node, item)
     })
+
+    log(`✓ "${type}" complete | ${all.length} nodes created | ${Date.now() - totalStart}ms total`)
 
     return all
   }

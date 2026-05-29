@@ -1,7 +1,7 @@
 {
   "name": "@grebban/gatsby-source-storyblok",
   "description": "Gatsby source plugin for building websites using the Storyblok headless CMS as a data source.",
-  "version": "0.0.0-development",
+  "version": "0.0.1-development-beta0",
   "author": "Grebban Design AB <hello@grebban.com>",
   "dependencies": {
     "json-stringify-safe": "^5.0.1",

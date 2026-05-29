@@ -1,24 +1,23 @@
 const crypto = require('crypto')
 const stringify = require('json-stringify-safe')
 
-const log = (msg) => console.log(`[Storyblok] ${msg}`)
-
 module.exports = {
-  init({createNode, client, setPluginStatus}) {
+  init({createNode, client, setPluginStatus, reporter}) {
     setPluginStatus({lastFetched: Date.now()})
     this.$createNode = createNode
     this.$client = client
     this.$cacheVersion = 0
+    this.$reporter = reporter
   },
 
   async getSpace() {
-    log(`→ Fetching "space" (spaces/me)`)
+    this.$reporter.verbose(`[Storyblok] → Fetching "space" (spaces/me)`)
     const t0 = Date.now()
     const space = await this.getOne('space', 'spaces/me', {
       node: 'StoryblokSpace'
     })
     this.$cacheVersion = space.version
-    log(`✓ "space" done in ${Date.now() - t0}ms | id: ${space.id} | cacheVersion: ${space.version}`)
+    this.$reporter.verbose(`[Storyblok] ✓ "space" done in ${Date.now() - t0}ms | id: ${space.id} | cacheVersion: ${space.version}`)
     return space
   },
 
@@ -83,35 +82,35 @@ module.exports = {
   },
 
   async getAll(type, options) {
-    log(`Starting getAll for "${type}"`)
+    this.$reporter.verbose(`[Storyblok] Starting getAll for "${type}"`)
     const totalStart = Date.now()
 
     let page = 1
     let t0 = Date.now()
-    log(`→ Fetching "${type}" page ${page} | params: ${JSON.stringify(options.params || {})}`)
+    this.$reporter.verbose(`[Storyblok] → Fetching "${type}" page ${page} | params: ${JSON.stringify(options.params || {})}`)
     let res = await this.getPage(type, page, options)
-    log(`✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
+    this.$reporter.verbose(`[Storyblok] ✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
 
     let all = res.data[type].constructor === Object ? Object.values(res.data[type]) : res.data[type]
     let total = res.total
     let lastPage = Math.ceil((res.total / 25))
 
     if (lastPage > 1) {
-      log(`"${type}" total: ${total} items across ${lastPage} page(s)`)
+      this.$reporter.verbose(`[Storyblok] "${type}" total: ${total} items across ${lastPage} page(s)`)
     }
 
     while (page < lastPage){
       page++
       t0 = Date.now()
-      log(`→ Fetching "${type}" page ${page}`)
+      this.$reporter.verbose(`[Storyblok] → Fetching "${type}" page ${page}`)
       res = await this.getPage(type, page, options)
-      log(`✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
+      this.$reporter.verbose(`[Storyblok] ✓ "${type}" page ${page} done in ${Date.now() - t0}ms | ${res.data[type].length || 0} items`)
       res.data[type].forEach((item) => {
         all.push(item)
       })
     }
 
-    log(`Processing ${all.length} "${type}" nodes...`)
+    this.$reporter.verbose(`[Storyblok] Processing ${all.length} "${type}" nodes...`)
     all.forEach((item) => {
       if (options.process) {
         options.process(item)
@@ -119,7 +118,7 @@ module.exports = {
       this.createNode(options.node, item)
     })
 
-    log(`✓ "${type}" complete | ${all.length} nodes created | ${Date.now() - totalStart}ms total`)
+    this.$reporter.verbose(`[Storyblok] ✓ "${type}" complete | ${all.length} nodes created | ${Date.now() - totalStart}ms total`)
 
     return all
   }

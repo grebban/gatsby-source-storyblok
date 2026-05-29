@@ -3,36 +3,35 @@ const Sync = require('./src/sync')
 const getStoryParams = require('./src/getStoryParams')
 const stringify = require('json-stringify-safe')
 
-const log = (msg) => console.log(`[Storyblok] ${msg}`)
-
-const logMemory = (label) => {
+const logMemory = (label, reporter) => {
   const { heapUsed, heapTotal, rss } = process.memoryUsage()
   const mb = (b) => Math.round(b / 1024 / 1024)
-  log(`memory [${label}] | heapUsed: ${mb(heapUsed)}MB | heapTotal: ${mb(heapTotal)}MB | rss: ${mb(rss)}MB`)
+  reporter.verbose(`[Storyblok] memory [${label}] | heapUsed: ${mb(heapUsed)}MB | heapTotal: ${mb(heapTotal)}MB | rss: ${mb(rss)}MB`)
 }
 
-exports.sourceNodes = async function({ actions }, options) {
+exports.sourceNodes = async function({ actions, reporter }, options) {
   const { createNode, setPluginStatus } = actions
   const client = new StoryblokClient(options)
   const tokenPreview = options.accessToken ? options.accessToken.slice(0, 8) + '...' : 'none'
 
-  log(`sourceNodes starting | version: "${options.version || 'published'}" | token: ${tokenPreview}`)
-  logMemory('sourceNodes start')
+  reporter.verbose(`[Storyblok] sourceNodes starting | version: "${options.version || 'published'}" | token: ${tokenPreview}`)
+  logMemory('sourceNodes start', reporter)
 
   Sync.init({
     createNode,
     setPluginStatus,
-    client
+    client,
+    reporter
   })
 
   const space = await Sync.getSpace()
   const languages = options.languages ? options.languages : space.language_codes
   languages.push('')
 
-  log(`Languages to fetch: ${JSON.stringify(languages)}`)
+  reporter.verbose(`[Storyblok] Languages to fetch: ${JSON.stringify(languages)}`)
 
   for (const language of languages) {
-    log(`--- Starting language: "${language || 'default'}" ---`)
+    reporter.verbose(`[Storyblok] --- Starting language: "${language || 'default'}" ---`)
     await Sync.getAll('stories', {
       node: 'StoryblokEntry',
       params: getStoryParams(language, options),
@@ -58,7 +57,7 @@ exports.sourceNodes = async function({ actions }, options) {
         const contentStr = stringify(item.content)
         const contentSizeKb = Math.round(Buffer.byteLength(contentStr, 'utf8') / 1024)
         if (contentSizeKb > 100) {
-          log(`⚠ Large story content: "${item.slug}" | ${contentSizeKb}kb | component: ${item.content && item.content.component}`)
+          reporter.warn(`[Storyblok] Large story content: "${item.slug}" | ${contentSizeKb}kb | component: ${item.content && item.content.component}`)
         }
 
         item.content = contentStr
@@ -66,7 +65,7 @@ exports.sourceNodes = async function({ actions }, options) {
     })
   }
 
-  log(`Fetching tags...`)
+  reporter.verbose(`[Storyblok] Fetching tags...`)
   await Sync.getAll('tags', {
     node: 'StoryblokTag',
     params: getStoryParams('', options),
@@ -76,24 +75,24 @@ exports.sourceNodes = async function({ actions }, options) {
   })
 
   if (options.includeLinks === true) {
-    log(`Fetching links...`)
+    reporter.verbose(`[Storyblok] Fetching links...`)
     await Sync.getAll('links', {
       node: 'StoryblokLink',
       params: getStoryParams('', options)
     })
   }
 
-  log(`Fetching datasources...`)
+  reporter.verbose(`[Storyblok] Fetching datasources...`)
   const datasources = await Sync.getAll('datasources', {
     node: 'StoryblokDatasource'
   })
 
-  log(`Found ${datasources.length} datasource(s)`)
+  reporter.verbose(`[Storyblok] Found ${datasources.length} datasource(s)`)
 
   for (const datasource of datasources) {
     const datasourceSlug = datasource.slug
 
-    log(`Fetching entries for datasource: "${datasourceSlug}"`)
+    reporter.verbose(`[Storyblok] Fetching entries for datasource: "${datasourceSlug}"`)
     await Sync.getAll('datasource_entries', {
       node: 'StoryblokDatasourceEntry',
       params: {
@@ -108,7 +107,7 @@ exports.sourceNodes = async function({ actions }, options) {
     const datasourceDimensions = datasource.dimensions || []
 
     for (const dimension of datasourceDimensions) {
-      log(`Fetching entries for datasource: "${datasourceSlug}" | dimension: "${dimension.entry_value}"`)
+      reporter.verbose(`[Storyblok] Fetching entries for datasource: "${datasourceSlug}" | dimension: "${dimension.entry_value}"`)
       await Sync.getAll('datasource_entries', {
         node: 'StoryblokDatasourceEntry',
         params: {
@@ -123,6 +122,6 @@ exports.sourceNodes = async function({ actions }, options) {
     }
   }
 
-  logMemory('sourceNodes end')
-  log(`sourceNodes complete`)
+  logMemory('sourceNodes end', reporter)
+  reporter.verbose(`[Storyblok] sourceNodes complete`)
 }
